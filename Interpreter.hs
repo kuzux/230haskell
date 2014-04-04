@@ -3,8 +3,10 @@ module Main where
 import Command
 import Parser (BinOp(..))
 import Control.Monad
+import Control.Monad.IO.Class
 import System.Environment
-import Data.IORef
+import qualified Data.Map as M
+import qualified Data.Vector as V
 
 toCommandList :: String -> [Command]
 toCommandList str = map (toCommand . words) $ lines str
@@ -28,8 +30,23 @@ toCommandList str = map (toCommand . words) $ lines str
           toCommand ("halt":_) = Halt
           toCommand _ = error "Invalid operation"
 
-interpret :: [Command] -> IO()
 
+data Env = Env { stack  :: [Double]
+               , code   :: V.Vector Command
+               , pc     :: Int
+               , vars   :: M.Map String Double
+               , labels :: M.Map String Int 
+               }
+type Exec a = Identity a   -- will become a transformer stack, one day :)
+
+runExec :: Exec a -> a
+runExec = runIdentity
+
+exec :: Env -> Exec Double
+exec = undefined
+
+initialEnvironment :: [Command] -> Env
+initialEnvironment = undefined
 
 main :: IO ()
 main = do 
