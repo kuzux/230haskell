@@ -71,8 +71,8 @@ execCommand env (GoFalse s)
     | (head . stack $ env) == 0 = execCommand (modifyStack env 1 $ \ _ -> []) (Goto s)
     | otherwise                 = execCommand env Pop
 execCommand env (Label s)           = nextOp env
-execCommand env (PrintCmd)          = env { printBuffer = Just (head . stack $ env)
-                                          , stack = (tail . stack $ env ) }
+execCommand env (PrintCmd)          = nextOp $ env { printBuffer = Just (head . stack $ env)
+                                                   , stack = (tail . stack $ env ) }
 execCommand env (Lvalue s)          = nextOp $ modifyStack env 0 $ \ _ -> [ addr ]
     where addr = fromIntegral . fromJust $ M.lookup s (varNames env)
 execCommand env (Rvalue s)          = nextOp $ modifyStack env 0 $ \ _ -> [ value ]
