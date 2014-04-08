@@ -7,9 +7,9 @@ begin
    S := ( x1 - x2 ) * ( x1 - x2 ) +  ( y1 - y2 ) * ( y1 - y2 ) ;
    d := S ;
    n := 50 ;
-   while ( n ) begin
+   while ( n ) do begin
      d :=  (d + S / d ) / 2 ;
      n := n - 1 
-   end
-   printf d 
+   end ;
+   print d 
 end 

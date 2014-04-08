@@ -40,7 +40,7 @@ data Env = Env { stack       :: [Double]
                , vars        :: V.Vector Double
                , labels      :: M.Map String Int
                , running     :: Bool
-               , printBuffer :: Maybe Double   -- this is required in order to keep execCommand pure
+               , printBuffer :: Maybe String   -- this is required in order to keep execCommand pure
                } deriving (Show)
 type Exec a = Identity a   -- will become a transformer stack, one day :)
 
@@ -71,7 +71,7 @@ execCommand env (GoFalse s)
     | (head . stack $ env) == 0 = execCommand (modifyStack env 1 $ \ _ -> []) (Goto s)
     | otherwise                 = execCommand env Pop
 execCommand env (Label s)           = nextOp env
-execCommand env (PrintCmd)          = nextOp $ env { printBuffer = Just (head . stack $ env)
+execCommand env (PrintCmd)          = nextOp $ env { printBuffer = Just ( show . head . stack $ env)
                                                    , stack = (tail . stack $ env ) }
 execCommand env (Lvalue s)          = nextOp $ modifyStack env 0 $ \ _ -> [ addr ]
     where addr = fromIntegral . fromJust $ M.lookup s (varNames env)
@@ -114,7 +114,7 @@ initialEnvironment cmds = Env { stack       = []
           
           extractVars' :: (Int, M.Map String Int) -> Command -> (Int, M.Map String Int)
           extractVars' (i, vars) (Lvalue s) | M.member s vars = (i, vars)
-                                            | otherwise       = (i+1, M.insert s 0 vars)
+                                            | otherwise       = (i+1, M.insert s i vars)
           extractVars' (i, vars) _          = (i, vars)
 
           extractLabels :: [Command] -> M.Map String Int
