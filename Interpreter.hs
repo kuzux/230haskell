@@ -36,7 +36,8 @@ toCommandList str = map (toCommand . words) $ lines str
 data Env = Env { stack       :: [Double]
                , code        :: V.Vector Command
                , pc          :: Int
-               , vars        :: M.Map String Double
+               , varNames    :: M.Map String Int
+               , vars        :: V.Vector Double
                , labels      :: M.Map String Int
                , running     :: Bool
                , printBuffer :: Maybe Double   -- this is required in order to keep execCommand pure
@@ -56,31 +57,37 @@ execCommand env (Operator Multiply) = nextOp $ execBinOp env (*)
 execCommand env (Operator Divide)   = nextOp $ execBinOp env (/)
 execCommand env (Operator Div)      = nextOp $ execIntegerBinOp env div
 execCommand env (Operator Mod)      = nextOp $ execIntegerBinOp env mod
-execCommand env (Push n)            = nextOp $ modifyStack env 0 $ \ _ s -> (fromIntegral n):s
-execCommand env (Pop)               = nextOp $ modifyStack env 1 $ \ _ s -> s
-execCommand env (Copy)              = nextOp $ modifyStack env 1 $ \ (a:_) s -> a:a:s
+execCommand env (Push n)            = nextOp $ modifyStack env 0 $ \ _ -> [fromIntegral n]
+execCommand env (Pop)               = nextOp $ modifyStack env 1 $ \ _ -> []
+execCommand env (Copy)              = nextOp $ modifyStack env 1 $ \ (a:_) -> [a,a]
 execCommand env (Halt)              = env { running = False }
 execCommand env (Goto s)            = env { pc = fromJust $ M.lookup s (labels env) }
 execCommand env (GoTrue s)          
-    | (head . stack $ env) /= 0 = execCommand (modifyStack env 1 $ \ _ s -> s) (Goto s)
+    | (head . stack $ env) /= 0 = execCommand (modifyStack env 1 $ \ _ -> []) (Goto s)
     | otherwise                 = execCommand env Pop
 execCommand env (GoFalse s)          
-    | (head . stack $ env) == 0 = execCommand (modifyStack env 1 $ \ _ s -> s) (Goto s)
+    | (head . stack $ env) == 0 = execCommand (modifyStack env 1 $ \ _ -> []) (Goto s)
     | otherwise                 = execCommand env Pop
 execCommand env (Label s)           = nextOp env
 execCommand env (PrintCmd)          = env { printBuffer = Just (head . stack $ env)
                                           , stack = (tail . stack $ env ) }
--- what's left is lvalue, rvalue, :=
+execCommand env (Lvalue s)          = nextOp $ modifyStack env 0 $ \ _ -> [ addr ]
+    where addr = fromIntegral . fromJust $ M.lookup s (varNames env)
+execCommand env (Rvalue s)          = nextOp $ modifyStack env 0 $ \ _ -> [ value ]
+    where value = (vars env) V.! (fromJust $ M.lookup s (varNames env))
+execCommand env (Assign)            = nextOp $ env { stack = rest, vars = newVars }
+    where (val:addr:rest) = stack env
+          newVars = (vars env) V.// [(truncate addr, val)] 
 
 nextOp :: Env -> Env
 nextOp env = env { pc = pc env + 1 }
 
 -- takes an environment and number of items to be popped
-modifyStack :: Env -> Int -> ([Double] -> [Double] -> [Double]) -> Env
-modifyStack env n f = env { stack = f (take n $ stack env) (drop n $ stack env) }
+modifyStack :: Env -> Int -> ([Double] -> [Double]) -> Env
+modifyStack env n f = env { stack = (f (take n $ stack env)) ++ (drop n $ stack env) }
 
 execBinOp :: Env -> (Double -> Double -> Double) -> Env
-execBinOp env f = modifyStack env 2 $ \ (b:a:_) rest -> (a `f` b) : rest
+execBinOp env f = modifyStack env 2 $ \ (b:a:_) -> [a `f` b]
 
 execIntegerBinOp :: Env -> (Integer -> Integer -> Integer) -> Env
 execIntegerBinOp env f = execBinOp env ( \ a b -> fromIntegral $ (truncate a) `f` (truncate b)) 
@@ -89,20 +96,24 @@ withIndices :: [a] -> [(Int, a)]
 withIndices = zip [0..]
 
 initialEnvironment :: [Command] -> Env
-initialEnvironment cmds = Env { stack   = []
-                              , code    = V.fromList cmds
-                              , pc      = 0
-                              , labels  = extractLabels cmds
-                              , vars    = extractVars cmds
-                              , running = True
+initialEnvironment cmds = Env { stack       = []
+                              , code        = V.fromList cmds
+                              , pc          = 0
+                              , labels      = extractLabels cmds
+                              , varNames    = varnames
+                              , vars        = V.fromList $ replicate (M.size varnames) 0.0
+                              , running     = True
                               , printBuffer = Nothing
                               }
-    where extractVars :: [Command] -> M.Map String Double
-          extractVars cmds = foldl extractVars' M.empty cmds
+    where varnames = extractVars cmds
+
+          extractVars :: [Command] -> M.Map String Int
+          extractVars cmds = snd $ foldl extractVars' (0, M.empty) cmds
           
-          extractVars' :: M.Map String Double -> Command -> M.Map String Double
-          extractVars' vars (Lvalue s) = M.insert s 0.0 vars
-          extractVars' vars _          = vars
+          extractVars' :: (Int, M.Map String Int) -> Command -> (Int, M.Map String Int)
+          extractVars' (i, vars) (Lvalue s) | M.member s vars = (i, vars)
+                                            | otherwise       = (i+1, M.insert s 0 vars)
+          extractVars' (i, vars) _          = (i, vars)
 
           extractLabels :: [Command] -> M.Map String Int
           extractLabels cmds = foldl extractLabels' M.empty (withIndices cmds)
