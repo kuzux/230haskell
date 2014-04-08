@@ -41,14 +41,16 @@ data Env = Env { stack       :: [Double]
                , labels      :: M.Map String Int
                , running     :: Bool
                , printBuffer :: Maybe Double   -- this is required in order to keep execCommand pure
-               }
+               } deriving (Show)
 type Exec a = Identity a   -- will become a transformer stack, one day :)
 
 runExec :: Exec a -> a
 runExec = runIdentity
 
-exec :: Env -> Exec Double
-exec = undefined
+exec :: Env -> Exec Env
+exec env | running env == False = return env
+         | otherwise            = exec $ execCommand env currCommand
+  where currCommand = (code env) V.! (pc env)
 
 execCommand :: Env -> Command -> Env
 execCommand env (Operator Add)      = nextOp $ execBinOp env (+)
@@ -125,5 +127,5 @@ initialEnvironment cmds = Env { stack       = []
 main :: IO ()
 main = do 
     (filename:_) <- getArgs
-    res <- (liftM toCommandList) $ readFile filename
-    putStrLn (show res)
+    cmds <- (liftM toCommandList) $ readFile filename
+    putStrLn . show . runExec . exec . initialEnvironment $ cmds
